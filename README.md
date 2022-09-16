@@ -12,7 +12,7 @@ Notes:
 You can download yolov7-tiny or yolov7 weights from YOLOV7 assets repository https://github.com/WongKinYiu/yolov7/releases
 
 App Demo:
-#https://youtu.be/ccjNwJsEvw4
+https://youtu.be/KVj53FgF2ow
 
 Sample Video:
 https://drive.google.com/file/d/119FPTQ3FyK6J_16WZUzQUCD9R0PD9In-/view?usp=sharing
