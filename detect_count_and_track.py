@@ -5,7 +5,7 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 from numpy import random
-
+import subprocess
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, \
@@ -23,6 +23,7 @@ from sort import *
 """ Random created palette"""
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
 
+
 area1_pointA = (210,350)
 area1_pointB = (865,350)
 area1_pointC = (165,400)
@@ -33,6 +34,10 @@ array_ids = []
 counting = 0
 modulo_counting = 0
 
+car_count = set()
+truck_and_bus_count = set()
+pedestrian_count = set()
+motorcycle_count = set()
 
 """" Calculates the relative bounding box from absolute pixel values. """
 def bbox_rel(*xyxy):
@@ -50,6 +55,18 @@ def bbox_rel(*xyxy):
 def compute_color_for_labels(label):
     color = [int((p * (label ** 2 - label + 1)) % 255) for p in palette]
     return tuple(color)
+
+def cross_product(p1, p2, p3):
+    return (p1[0] - p2[0]) * (p3[1] - p2[1]) - (p1[1] - p2[1]) * (p3[0] - p2[0])
+
+def is_inside_parallelogram(point, q1, q2, q3, q4):
+    cp1 = cross_product(q1, q2, point)
+    cp2 = cross_product(q2, q3, point)
+    cp3 = cross_product(q3, q4, point)
+    cp4 = cross_product(q4, q1, point)
+
+    return (cp1 >= 0 and cp2 >= 0 and cp3 >= 0 and cp4 >= 0) or (cp1 <= 0 and cp2 <= 0 and cp3 <= 0 and cp4 <= 0)
+
 
 """Function to Draw Bounding boxes"""
 def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(0, 0)):
@@ -76,8 +93,8 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
         center_point = (int(midpoint_x),int(midpoint_y))
         midpoint_color = (0,255,0)
         
-        if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
-            
+        #if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
+        if is_inside_parallelogram((midpoint_x,midpoint_y), area1_pointA, area1_pointB, area1_pointC, area1_pointD):   
             midpoint_color = (0,0,255)
             print('Kategori : '+str(cat))
             
@@ -88,6 +105,14 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
             else:
                 array_ids.append(id)
             
+            if names[cat] == 'car':
+                car_count.add(id)
+            elif names[cat] == 'truck' or names[cat] == 'bus':
+                truck_and_bus_count.add(id)
+            elif names[cat] == 'person':
+                pedestrian_count.add(id)
+            elif names[cat] == 'motorcycle':
+                motorcycle_count.add(id)
             
         cv2.circle(img,center_point,radius=1,color=midpoint_color,thickness=2)
         
@@ -257,7 +282,7 @@ def detect(save_img=False):
             thickness = 2
             fontScale = 1
             font = cv2.FONT_HERSHEY_SIMPLEX
-            org = (160,570)
+            org = (im0.shape[0]//3,im0.shape[1]//3)
             
             
             if (count_vehicle == 0):
@@ -271,7 +296,12 @@ def detect(save_img=False):
                         modulo_counting = modulo_counting + 100
                         array_ids.clear()
                 
-            cv2.putText(im0, 'Vehicle Counting = '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)            
+            #cv2.putText(im0, 'Vehicle Counting = '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Car Count = '+str(len(car_count)), (org[0],org[1]+30), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Truck and Bus Count = '+str(len(truck_and_bus_count)), (org[0],org[1]+60), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Pedestrian Count = '+str(len(pedestrian_count)), (org[0],org[1]+90), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Motorcycle Count = '+str(len(motorcycle_count)), (org[0],org[1]+120), font, fontScale, color, thickness, cv2.LINE_AA)
+
 
             # Stream results
             if view_img:
@@ -307,7 +337,7 @@ def detect(save_img=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='yolov7x.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.65, help='object confidence threshold')
@@ -321,18 +351,28 @@ if __name__ == '__main__':
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--project', default='runs/detect', help='save results to project/name')
+    parser.add_argument('--project', default='./runs/detect', help='save results to project/name')
     parser.add_argument('--name', default='object_tracking', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--no-trace', action='store_true', help='don`t trace model')
+    parser.add_argument('--start-time', default='0', help='start time')
+    parser.add_argument('--area', default='area.txt', help='start time')
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
-
+    #subprocess.run(["python", "draw.py",opt.source,opt.start_time])
+    with open(opt.area,"r") as f:
+        area = f.read()
+        area = eval(area)
+    area1_pointA = area[0]
+    area1_pointB = area[1]
+    area1_pointC = area[2]
+    area1_pointD = area[3]
     with torch.no_grad():
         if opt.update:  # update all models (to fix SourceChangeWarning)
             for opt.weights in ['yolov7.pt']:
                 detect()
                 strip_optimizer(opt.weights)
         else:
+
             detect()
