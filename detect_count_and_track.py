@@ -33,6 +33,12 @@ array_ids = []
 counting = 0
 modulo_counting = 0
 
+#add new category
+car_count = set()
+truck_and_bus_count = set()
+pedestrian_count = set()
+motorcycle_count = set()
+
 
 """" Calculates the relative bounding box from absolute pixel values. """
 def bbox_rel(*xyxy):
@@ -50,6 +56,16 @@ def bbox_rel(*xyxy):
 def compute_color_for_labels(label):
     color = [int((p * (label ** 2 - label + 1)) % 255) for p in palette]
     return tuple(color)
+
+def cross_product(p1, p2, p3):
+    return (p1[0] - p2[0]) * (p3[1] - p2[1]) - (p1[1] - p2[1]) * (p3[0] - p2[0])
+
+def is_inside_parallelogram(point, q1, q2, q3, q4):
+    cp1 = cross_product(q1, q2, point)
+    cp2 = cross_product(q2, q3, point)
+    cp3 = cross_product(q3, q4, point)
+    cp4 = cross_product(q4, q1, point)
+    return (cp1 >= 0 and cp2 >= 0 and cp3 >= 0 and cp4 >= 0) or (cp1 <= 0 and cp2 <= 0 and cp3 <= 0 and cp4 <= 0)
 
 """Function to Draw Bounding boxes"""
 def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(0, 0)):
@@ -76,7 +92,8 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
         center_point = (int(midpoint_x),int(midpoint_y))
         midpoint_color = (0,255,0)
         
-        if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
+        # fix area bug
+        if is_inside_parallelogram((midpoint_x,midpoint_y), area1_pointA, area1_pointB, area1_pointC, area1_pointD):
             
             midpoint_color = (0,0,255)
             print('Kategori : '+str(cat))
@@ -88,6 +105,15 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
             else:
                 array_ids.append(id)
             
+            #show new category in img
+            if names[cat] == 'car':
+                car_count.add(id)
+            elif names[cat] == 'truck' or names[cat] == 'bus':
+                truck_and_bus_count.add(id)
+            elif names[cat] == 'person':
+                pedestrian_count.add(id)
+            elif names[cat] == 'motorcycle':
+                motorcycle_count.add(id)
             
         cv2.circle(img,center_point,radius=1,color=midpoint_color,thickness=2)
         
@@ -271,7 +297,11 @@ def detect(save_img=False):
                         modulo_counting = modulo_counting + 100
                         array_ids.clear()
                 
-            cv2.putText(im0, 'Vehicle Counting = '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)            
+            #cv2.putText(im0, 'Vehicle Counting = '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Car Counting = '+str(len(car_count)), (org[0],org[1]+30), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Truck and Bus Counting = '+str(len(truck_and_bus_count)), (org[0],org[1]+60), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Pedestrian Counting = '+str(len(pedestrian_count)), (org[0],org[1]+90), font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.putText(im0, 'Motorcycle Counting = '+str(len(motorcycle_count)), (org[0],org[1]+120), font, fontScale, color, thickness, cv2.LINE_AA)
 
             # Stream results
             if view_img:
